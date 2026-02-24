@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: titan-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://titan_admin:titan_secure_password_2026@db:5432/titan_enterprise?schema=public
+      - JWT_SECRET=${JWT_SECRET:-titan_prod_secure_random_a8b9c0d1e2f3g4h5}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - titan-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: titan-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
+      - NEXT_PUBLIC_ENABLE_VOICE_INPUT=true
+      - NEXT_PUBLIC_ENABLE_STORE=true
+      - NEXT_PUBLIC_ENABLE_LAB=true
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - titan-network
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: titan-db
+    environment:
+      POSTGRES_USER: titan_admin
+      POSTGRES_PASSWORD: titan_secure_password_2026
+      POSTGRES_DB: titan_enterprise
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - titan-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U titan_admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: titan-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - titan-network
+    command: redis-server --appendonly yes --requirepass ""
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  titan-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+volumes:
+  postgres_data:
